@@ -1,0 +1,65 @@
+version: "3.8"
+services:
+  php:
+    build:
+      context: .
+      dockerfile: ./docker/php/Dockerfile
+    env_file: ./docker/php/.env
+    tty: true
+    healthcheck:
+      test: ["CMD", "lsof", "-i:9000"]
+      start_period: 5s
+      timeout: 20s
+      retries: 10
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./app/:/usr/src/myapp
+      - ./docker/php/php.ini:/usr/local/etc/php/php.ini
+    environment:
+      - TZ=Asia/Tokyo
+  nginx:
+    image: nginx:latest
+    depends_on:
+      db:
+        condition: service_healthy
+      php:
+        condition: service_healthy
+    ports:
+      - 8080:80
+    volumes:
+      - ./app/:/usr/src/myapp
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+  db:
+    image: mysql:8.0.31
+    platform: linux/amd64
+    env_file: ./docker/db/.env
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    volumes:
+      - ./data:/var/lib/mysql
+      - ./docker/db/conf.d/my.cnf:/etc/mysql/conf.d/my.cnf
+      - ./docker/db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test:
+        ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      start_period: 5s
+      timeout: 20s
+      retries: 10
+    ports:
+      - 3306:3306
+    environment:
+      TZ: Asia/Tokyo
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    platform: linux/amd64
+    environment:
+      - PMA_ARBITRARY=1
+      - PMA_HOST=db
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - 8000:80
